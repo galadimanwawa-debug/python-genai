@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ha">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>App na Yanargizo</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    body { font-family: Arial, sans-serif; margin:0; padding:0; transition: background 0.3s, color 0.3s;}
+    header { background-color:#4CAF50; color:white; padding:20px; text-align:center; position:relative;}
+    nav { background-color:#333; overflow:hidden;}
+    nav a { float:left; color:white; padding:14px 20px; text-decoration:none; text-align:center;}
+    nav a:hover { background-color:#ddd; color:black;}
+    main { padding:20px;}
+    .card { background-color:white; padding:15px; margin:15px 0; border-radius:10px; box-shadow:0 0 5px rgba(0,0,0,0.1);}
+    button { background-color:#4CAF50; color:white; padding:10px 20px; border:none; border-radius:5px; cursor:pointer;}
+    button:hover { background-color:#45a049;}
+    input[type="text"], input[type="password"], input[type="datetime-local"], select { width:100%; padding:8px; margin:5px 0 15px 0; border:1px solid #ccc; border-radius:5px; }
+    ul { list-style:none; padding:0;}
+    li { padding:8px; margin-bottom:5px; border-radius:5px; border:1px solid #ccc; touch-action: pan-y; user-select:none;}
+    .priority-High { border-left:5px solid #ff4d4d; background-color:#ffe5e5;}
+    .priority-Medium { border-left:5px solid #ffcc00; background-color:#fff8e5;}
+    .priority-Low { border-left:5px solid #4CAF50; background-color:#e5ffe5;}
+    li.done { text-decoration:line-through; background-color:#d3ffd3;}
+    /* Dark mode */
+    body.dark-mode { background-color:#121212; color:#fff;}
+    body.dark-mode header { background-color:#1E1E1E;}
+    body.dark-mode nav { background-color:#1E1E1E;}
+    body.dark-mode nav a:hover { background-color:#555; color:white;}
+    body.dark-mode .card { background-color:#1E1E1E; color:#fff; box-shadow:0 4px 8px rgba(255,255,255,0.1);}
+    #themeToggle { position:absolute; top:20px; right:20px; background-color:#ff9800; border:none; padding:8px 12px; border-radius:5px; cursor:pointer; transition:background 0.3s;}
+    #themeToggle:hover { background-color:#e68a00;}
+</style>
+</head>
+<body>
+<header>
+    <h1>App na Yanargizo</h1>
+    <button id="themeToggle" onclick="toggleTheme()">Dark Mode</button>
+</header>
+
+<nav>
+    <a href="#">Gida</a>
+    <a href="#">Ayyuka</a>
+    <a href="#">Saita</a>
+</nav>
+
+<main>
+    <!-- Add Task -->
+    <div class="card">
+        <h2>Ƙara Sabon Aiki</h2>
+        <input type="text" id="newTask" placeholder="Saka sunan aikin">
+        <select id="priority">
+            <option value="Low">Low Priority</option>
+            <option value="Medium">Medium Priority</option>
+            <option value="High">High Priority</option>
+        </select>
+        <input type="datetime-local" id="dueDate">
+        <select id="category">
+            <option value="Work">Work</option>
+            <option value="Personal">Personal</option>
+            <option value="Study">Study</option>
+            <option value="Other">Other</option>
+        </select>
+        <button onclick="addTask()">Ƙara Aiki</button>
+    </div>
+
+    <!-- Filter & Search -->
+    <div class="card">
+        <h3>Filter by Category</h3>
+        <select id="filterCategory" onchange="filterByCategory()">
+            <option value="All">All</option>
+            <option value="Work">Work</option>
+            <option value="Personal">Personal</option>
+            <option value="Study">Study</option>
+            <option value="Other">Other</option>
+        </select>
+        <h3>Bincika Ayyuka</h3>
+        <input type="text" id="searchTask" placeholder="Saka sunan aikin..." onkeyup="searchTasks()">
+    </div>
+
+    <!-- Task List -->
+    <div class="card">
+        <h3>Jerinsu Ayyuka</h3>
+        <ul id="taskList"></ul>
+    </div>
+
+    <!-- Dashboard / Chart -->
+    <div class="card">
+        <h3>Dashboard</h3>
+        <p id="total-tasks"></p>
+        <p id="pending-tasks"></p>
+        <canvas id="taskChart" width="400" height="200"></canvas>
+    </div>
+</main>
+
+<audio id="reminderSound" src="https://www.soundjay.com/buttons/sounds/button-3.mp3" preload="auto"></audio>
+
+<script>
+let tasks = JSON.parse(localStorage.getItem('tasks')) || [];
+
+// Theme
+if(localStorage.getItem('theme')) { document.body.className = localStorage.getItem('theme'); updateThemeButton();}
+else document.body.className = "light-mode";
+
+function toggleTheme() {
+    if(document.body.classList.contains('light-mode')) document.body.className = "dark-mode";
+    else document.body.className = "light-mode";
+    localStorage.setItem('theme', document.body.className);
+    updateThemeButton();
+}
+function updateThemeButton() {
+    document.getElementById('themeToggle').textContent = document.body.classList.contains('dark-mode') ? "Light Mode" : "Dark Mode";
+}
+
+// Add task
+function addTask() {
+    const taskInput = document.getElementById('newTask');
+    const priority = document.getElementById('priority').value;
+    const dueDate = document.getElementById('dueDate').value;
+    const category = document.getElementById('category').value;
+    if(taskInput.value.trim() !== "") {
+        tasks.push({name:taskInput.value, done:false, priority, due:dueDate, category});
+        taskInput.value=""; document.getElementById('dueDate').value="";
+        saveTasks(); renderTasks(); updateDashboard(); showNotification("An ƙara sabon aiki!");
+    }
+}
+
+// Save
+function saveTasks() { localStorage.setItem('tasks', JSON.stringify(tasks)); updateChart(); }
+
+// Render tasks
+function renderTasks(listToRender = tasks) {
+    const list = document.getElementById('taskList'); list.innerHTML = "";
+    const sound = document.getElementById('reminderSound');
+    listToRender.forEach((task,index)=>{
+        const li=document.createElement('li');
+        li.textContent=`[${task.category}] [${task.priority}] ${task.name}` + (task.due?` (Due: ${new Date(task.due).toLocaleString()})`:"");
+        li.draggable=true; li.className=`priority-${task.priority}` + (task.done?" done":""); li.style.cursor="grab";
+
+        // double click
+        li.ondblclick=()=>{task.done=!task.done; saveTasks(); renderTasks(listToRender); updateDashboard(); showNotification(task.done?"Aiki ya kammala!":"Aiki an dawo da shi!");};
+
+        // drag & drop
+        li.ondragover=(e)=>e.preventDefault();
+        li.ondrop=(e)=>{const draggedIndex=e.dataTransfer.getData("text/plain"); const temp=tasks[draggedIndex]; tasks[draggedIndex]=tasks[index]; tasks[index]=temp; saveTasks(); renderTasks(listToRender); updateDashboard();};
+        li.ondragstart=(e)=>e.dataTransfer.setData("text/plain",index);
+
+        // mobile swipe
+        addSwipeListeners(li,task,index);
+
+        list.appendChild(li);
+    });
+
+    // Reminder sound
+    const now=new Date();
+    listToRender.forEach(task=>{
+        if(task.due && !task.done){
+            const diff = new Date(task.due)-now;
+            if(diff>0 && diff<=60000){ sound.play(); }
+        }
+    });
+}
+
+// Swipe
+let touchStartX=0, touchEndX=0;
+function handleGesture(task,index){
+    const threshold=100;
+    if(touchEndX<touchStartX-threshold){ tasks.splice(index,1); saveTasks(); renderTasks(); updateDashboard(); showNotification(`Aiki "${task.name}" an share!`);}
+    else if(touchEndX>touchStartX+threshold){ task.done=true; saveTasks(); renderTasks(); updateDashboard(); showNotification(`Aiki "${task.name}" ya kammala!`);}
+}
+function addSwipeListeners(li,task,index){
+    li.addEventListener('touchstart',e=>{touchStartX=e.changedTouches[0].screenX;});
+    li.addEventListener('touchend',e=>{touchEndX=e.changedTouches[0].screenX; handleGesture(task,index);});
+}
+
+// Dashboard
+function updateDashboard(){
+    document.getElementById('total-tasks').textContent = tasks.length+" Ayyuka yanzu";
+    const pending = tasks.filter(t=>!t.done).length;
+    document.getElementById('pending-tasks').textContent = pending+" Ayyuka da ba a gama ba";
+    updateChart();
+}
+
+// Chart
+function updateChart(){
+    const done = tasks.filter(t=>t.done).length;
+    const pending = tasks.filter(t=>!t.done).length;
+    if(window.taskChart){ window.taskChart.data.datasets[0].data=[done,pending]; window.taskChart.update(); }
+    else{
+        const ctx = document.getElementById('taskChart').getContext('2d');
+        window.taskChart = new Chart(ctx,{type:'doughnut', data:{labels:['An kammala','Ba a gama ba'], datasets:[{data:[done,pending],backgroundColor:['#4CAF50','#ff9800']}]}, options:{responsive:true, plugins:{legend:{position:'bottom'}}}});
+    }
+}
+
+// Filter by category
+function filterByCategory(){
+    const val=document.getElementById('filterCategory').value;
+    renderTasks(val==="All"?tasks:tasks.filter(t=>t.category===val));
+}
+
+// Search
+function searchTasks(){
+    const txt=document.getElementById('searchTask').value.toLowerCase();
+    renderTasks(tasks.filter(t=>t.name.toLowerCase().includes(txt)));
+}
+
+// Reminder system
+function checkReminders(){
+    const now=new Date();
+    const sound=document.getElementById('reminderSound');
+    tasks.forEach(task=>{
+        if(task.due && !task.done){
+            const diff=new Date(task.due)-now;
+            if(diff>0 && diff<=60000){ sound.play(); showNotification(`Reminder: Aiki "${task.name}" zai ƙure nan da minti 1!`);}
+        }
+    });
+}
+setInterval(checkReminders,30000);
+
+// Notification (simple)
+function showNotification(msg){ alert(msg); }
+
+// Initialize
+renderTasks(); updateDashboard();
+
+// Load theme button
+function updateThemeButton(){document.getElementById('themeToggle').textContent=document.body.classList.contains('dark-mode')?"Light Mode":"Dark Mode";}
+</script>
+</body>
+</html>
